@@ -31,5 +31,4 @@ jobs:
       with:
         service: 'pet-plan'
         region: 'europe-west1'
-        image: 'gcr.io/1086618854672/pet-plan:latest'
         source: '.' 
