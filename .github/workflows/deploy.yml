@@ -3,33 +3,57 @@ name: Deploy to Cloud Run
 on:
   push:
     branches:
-      - main
+      - main  # 💡 確保這是您要觸發部署的分支名稱
+
+env:
+  PROJECT_ID: 'project-eb2c4474-5ec9-4b7f-be88'
+  REGION: 'europe-west1'
+  SERVICE_NAME: 'pet-plan'
+  GAR_REPO_NAME: 'cloud-run-source-deploy'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # 關鍵設定：GitHub Actions 必須要有寫入 id-token 的權限才能向 GCP 換取憑證
     permissions:
       contents: 'read'
-      id-token: 'write'
+      id-token: 'write' # 💡 WIF 認證必備權限
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # 🌟 WIF 驗證步驟（取代原本的 JSON 金鑰）
+    # 1. 透過 WIF 登入 Google Cloud（此時已亮綠燈，功能完全正常）
     - name: Authenticate to Google Cloud
+      id: auth
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: 'projects/1086618854672/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider'
-        service_account: 'github-deployer@project-eb2c4474-5ec9-4b7f-be8.iam.gserviceaccount.com'
+        service_account: 'github-deployer@://gserviceaccount.com'
 
-    # 後續你可以直接呼叫 gcloud 命令或部署 Cloud Run，皆已自動授權
+    # 2. 設定 Docker 認證，讓本地 Docker 能夠推送到 GCP Artifact Registry
+    - name: Set up Docker Auth
+      run: |
+        gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+    # 3. 建立（Build）並推送（Push）Docker 映像檔
+    - name: Build and Push Container
+      run: |
+        IMAGE_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+        
+        # 使用專案根目錄的 Dockerfile 進行打包
+        docker build -t $IMAGE_TAG .
+        
+        # 推送到 Artifact Registry
+        docker push $IMAGE_TAG
+        
+        # 將 Image 路徑存入環境變數供下一步驟使用
+        echo "IMAGE_PATH=$IMAGE_TAG" >> $GITHUB_ENV
+
+    # 4. 直接指定剛剛推好的 Image 部署到 Cloud Run（不涉及 source 現地編譯）
     - name: Deploy to Cloud Run
       uses: google-github-actions/deploy-cloudrun@v2
       with:
-        service: 'pet-plan'
-        region: 'europe-west1'
-        source: '.'
-        # flags: '--registry-repository=projects/project-eb2c4474-5ec9-4b7f-be8/locations/europe-west1/repositories/cloud-run-source-deploy'
+        service: ${{ env.SERVICE_NAME }}
+        region: ${{ env.REGION }}
+        image: ${{ env.IMAGE_PATH }}
