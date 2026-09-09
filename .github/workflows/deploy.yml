@@ -29,7 +29,7 @@ jobs:
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: 'projects/1086618854672/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider'
-        service_account: 'github-deployer@://gserviceaccount.com'
+        service_account: 'github-deployer@project-eb2c4474-5ec9-4b7f-be8.iam.gserviceaccount.com'
         # 🌟 關鍵修正：強制要求生成 access_token，供下一步的 Docker 登入使用
         create_credentials_file: true
         token_format: 'access_token'
