@@ -34,7 +34,7 @@ jobs:
     # 2. 設定 Docker 認證，讓本地 Docker 能夠推送到 GCP Artifact Registry
     - name: Set up Docker Auth
       run: |
-        echo "$(gcloud auth print-access-token)" | docker login -u oauth2access_token --password-stdin https://${{ env.REGION }}-docker.pkg.dev
+        echo "${{ steps.auth.outputs.access_token }}" | docker login -u oauth2access_token --password-stdin https://${{ env.REGION }}-docker.pkg.dev
 
     # 3. 建立（Build）並推送（Push）Docker 映像檔
     - name: Build and Push Container
