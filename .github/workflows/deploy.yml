@@ -3,7 +3,7 @@ name: Deploy to Cloud Run
 on:
   push:
     branches:
-      - main  # 💡 確保這是您要觸發部署的分支名稱
+      - main  # 💡 如果您的主要開發分支是 master，請將 main 改為 master
 
 env:
   PROJECT_ID: 'project-eb2c4474-5ec9-4b7f-be88'
@@ -17,26 +17,29 @@ jobs:
 
     permissions:
       contents: 'read'
-      id-token: 'write' # 💡 WIF 認證必備權限
+      id-token: 'write' # 💡 WIF 換取 OIDC Token 必備的安全性權限
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # 1. 透過 WIF 登入 Google Cloud（此時已亮綠燈，功能完全正常）
+    # 1. 透過 WIF 登入 Google Cloud 并生成 access_token
     - name: Authenticate to Google Cloud
       id: auth
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: 'projects/1086618854672/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider'
-        service_account: 'github-deployer@project-eb2c4474-5ec9-4b7f-be8.iam.gserviceaccount.com'
+        service_account: 'github-deployer@://gserviceaccount.com'
+        # 🌟 關鍵修正：強制要求生成 access_token，供下一步的 Docker 登入使用
+        create_credentials_file: true
+        token_format: 'access_token'
 
-    # 2. 設定 Docker 認證，讓本地 Docker 能夠推送到 GCP Artifact Registry
+    # 2. 設定 Docker 認證（直接管道餵入 Token，免去 gcloud 工具本地換證的權限阻擋）
     - name: Set up Docker Auth
       run: |
         echo "${{ steps.auth.outputs.access_token }}" | docker login -u oauth2access_token --password-stdin https://${{ env.REGION }}-docker.pkg.dev
 
-    # 3. 建立（Build）並推送（Push）Docker 映像檔
+    # 3. 在 GitHub 環境建立並推送 Docker 映像檔
     - name: Build and Push Container
       run: |
         IMAGE_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
@@ -47,10 +50,10 @@ jobs:
         # 推送到 Artifact Registry
         docker push $IMAGE_TAG
         
-        # 將 Image 路徑存入環境變數供下一步驟使用
+        # 將 Image 完整路徑寫入環境變數，留給下一步使用
         echo "IMAGE_PATH=$IMAGE_TAG" >> $GITHUB_ENV
 
-    # 4. 直接指定剛剛推好的 Image 部署到 Cloud Run（不涉及 source 現地編譯）
+    # 4. 指定剛剛推好的映像檔部署到 Cloud Run（完美避開複雜的後端 source 連動權限問題）
     - name: Deploy to Cloud Run
       uses: google-github-actions/deploy-cloudrun@v2
       with:
